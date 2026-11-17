@@ -1,0 +1,79 @@
+{
+  "name": "@extantape/payload-plugin-contact-tiles",
+  "version": "0.1.0",
+  "description": "Contact tiles for Payload: a routed contact page with a search box that autocompletes topics and synonyms, quick tiles, and one short form. The server emails the topic's group address, with the sender as reply-to, and never sends an address to the browser.",
+  "homepage": "https://github.com/ExtantApe/payload-plugin-contact-tiles#readme",
+  "bugs": {
+    "url": "https://github.com/ExtantApe/payload-plugin-contact-tiles/issues"
+  },
+  "keywords": [
+    "payload",
+    "payload-plugin",
+    "payloadcms",
+    "contact",
+    "contact-form",
+    "routing",
+    "combobox",
+    "autocomplete",
+    "accessible",
+    "honeypot"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ExtantApe/payload-plugin-contact-tiles.git"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "leak-check": "bash scripts/leak-check.sh",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test"
+  },
+  "peerDependencies": {
+    "payload": "^3.80.0",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "graphql": "^16.14.2",
+    "jsdom": "^26.1.0",
+    "payload": "3.92.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

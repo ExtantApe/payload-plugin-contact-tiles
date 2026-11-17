@@ -2,6 +2,16 @@
 
 Kept by this repo's owning session, per `~/Code/CLAUDE.md`, "Test self-audits". Newest first.
 
+## 2026-11-17: first real audit (routing, guards, component)
+
+Suite: 74 tests (`npx vitest run`): 58 server, 16 component (jsdom).
+
+- **Promises.** Routes by topic id only; unknown topics refused; reply-to is the sender; no address reaches the browser; nothing stored; honeypot; rate limits per address and email that fail closed; line breaks refused; combobox with keyboard and announcements; no-JS fallback.
+- **Covered.** Each of those, including: ids like `__proto__`, an address in the topic field and in extra `to`, `cc`, `bcc` fields; five kinds of line break in name and email; a limiter that throws, answers false, undefined, `'yes'` or `1`; empty address; faked `x-forwarded-for`; the honeypot still using up the address count; public config and errors scanned for `@`; start-up refusals; the server-rendered markup; arrow keys, Home, End, Enter, Escape, `aria-*` attributes, live announcements, a missing topic, server refusals and a network failure.
+- **Mutation checks.** 8 guards each removed in turn (line-break check, honeypot, strict `true`, shared unknown address, client-supplied `to`, name cleaning, email limit, limiter error): all 8 fail the suite.
+- **Gaps skipped.** A real screen reader, a phone browser and measured contrast (not possible here; stated in the README). A real email adapter (the test stub records the message instead). Several processes sharing a limiter (the built-in one says it doesn't). CSS rules (no layout engine in jsdom). The email format check beyond the cases listed, since it is only a sanity check.
+- **Known weak spot.** The component's focus handling after choosing a topic is only checked for the missing-topic case.
+
 ## 2026-11-16: first audit (starter kit)
 
 - Promises: none yet.
