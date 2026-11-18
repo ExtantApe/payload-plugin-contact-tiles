@@ -2,6 +2,14 @@
 
 Kept by this repo's owning session, per `~/Code/CLAUDE.md`, "Test self-audits". Newest first.
 
+## 2026-11-17: the optional human check
+
+Suite: 74 tests before, 90 after.
+
+- **Tests added.** Off by default and unchanged; `true` sends and the token, address and request reach the hook; a missing or non-string token is `undefined`; the configured token field; false, a throw, a rejection, undefined, a string, 1 and an object each refuse with 400 `human`, send nothing and reveal no detail; it runs before topic routing; the no-JS post forwards the token and redirects with `error=human`; a failing check still uses up the address count; the component's slot and the human-check message.
+- **Mutation checks.** Strict `=== true` loosened, and the refusal removed: both fail the suite.
+- **Skipped.** A real Turnstile or other verifier (the hook is a function the site supplies).
+
 ## 2026-11-17: first real audit (routing, guards, component)
 
 Suite: 74 tests (`npx vitest run`): 58 server, 16 component (jsdom).

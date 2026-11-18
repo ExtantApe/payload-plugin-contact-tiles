@@ -281,3 +281,69 @@ describe('search', () => {
     expect(searchTopics(t, 'spon').map((x) => x.id)).toEqual(['s', 'b'])
   })
 })
+
+describe('optional human check', () => {
+  it('is off unless set: behavior is unchanged and the page is told so', async () => {
+    const { call, sent, o } = make()
+    expect((await call(good)).status).toBe(200)
+    expect(sent).toHaveLength(1)
+    expect(publicConfig(o).humanCheck).toBe(false)
+  })
+  it('true sends, and the token, address and request reach the hook', async () => {
+    const seen: { token?: string; address: string | null; hasReq: boolean }[] = []
+    const { call, sent, o } = make({ verifyHuman: ({ token, address, req }) => (seen.push({ token, address, hasReq: !!req?.headers?.get }), true) })
+    expect((await call({ ...good, humanToken: 'tok-123' }, { ip: '203.0.113.5' })).status).toBe(200)
+    expect(sent).toHaveLength(1)
+    expect(seen).toEqual([{ token: 'tok-123', address: '203.0.113.5', hasReq: true }])
+    expect(publicConfig(o).humanCheck).toBe(true)
+  })
+  it('a missing or non-string token reaches the hook as undefined', async () => {
+    const tokens: unknown[] = []
+    const { call } = make({ verifyHuman: ({ token }) => (tokens.push(token), true) })
+    await call(good)
+    await call({ ...good, humanToken: ['x'] })
+    expect(tokens).toEqual([undefined, undefined])
+  })
+  it('reads the token from the configured field', async () => {
+    const tokens: unknown[] = []
+    const { call } = make({ humanTokenField: 'cf-turnstile-response', verifyHuman: ({ token }) => (tokens.push(token), true) })
+    await call({ ...good, humanToken: 'wrong', 'cf-turnstile-response': 'right' })
+    expect(tokens).toEqual(['right'])
+  })
+  it.each([
+    ['false', () => false],
+    ['a throw', () => { throw new Error('verifier down: secret-detail') }],
+    ['a rejection', async () => { throw new Error('verifier down') }],
+    ['undefined', () => undefined as never],
+    ['a string', () => 'true' as never],
+    ['1', () => 1 as never],
+    ['an object', () => ({}) as never],
+  ])('%s refuses, sends nothing, and says nothing about why', async (_n, verifyHuman) => {
+    const { call, sent } = make({ verifyHuman })
+    const res = await call({ ...good, humanToken: 't' })
+    expect(res.status).toBe(400)
+    const body = await res.text()
+    expect(JSON.parse(body).error.code).toBe('human')
+    expect(body).not.toMatch(/secret-detail|verifier|@example/)
+    expect(sent).toHaveLength(0)
+  })
+  it('runs before the topic is routed: a bad human check with a bad topic says only "human"', async () => {
+    const { call } = make({ verifyHuman: () => false })
+    expect(((await (await call({ ...good, topic: 'nope' })).json()) as { error: { code: string } }).error.code).toBe('human')
+  })
+  it('the no-JS form post forwards the token and redirects with the error', async () => {
+    const tokens: unknown[] = []
+    const ok = make({ verifyHuman: ({ token }) => (tokens.push(token), true) })
+    expect((await ok.call({ ...good, humanToken: 'form-tok' }, { form: true })).headers.get('location')).toBe('/contact?sent=1')
+    expect(tokens).toEqual(['form-tok'])
+    const no = make({ verifyHuman: () => false })
+    expect((await no.call(good, { form: true })).headers.get('location')).toBe('/contact?error=human')
+    expect(no.sent).toHaveLength(0)
+  })
+  it('still counts the address, so a failing check can’t be hammered', async () => {
+    const { call } = make({ limits: { address: 2 }, verifyHuman: () => false })
+    await call(good)
+    await call(good)
+    expect((await call(good)).status).toBe(429)
+  })
+})

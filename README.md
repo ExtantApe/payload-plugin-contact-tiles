@@ -2,7 +2,7 @@
 
 Contact tiles for Payload: a routed contact page with a search box that autocompletes topics and synonyms, quick tiles, and one short form. The server emails the topic's group address, with the sender as reply-to, and never sends an address to the browser.
 
-**Status:** 0.1.0, not on npm. 74 tests pass: the server flow with a stubbed email adapter and made-up addresses (routing, refusals, rate limits that fail closed, header injection, the honeypot) and the React component in jsdom (combobox keys and ARIA attributes, tiles, the form, and the server-rendered no-JS markup). Nothing has run on a real site, no real email has been sent, and the component hasn't been checked with a real screen reader, in a phone browser, or with a contrast tool. The CSS colors are chosen to meet WCAG AA but that hasn't been measured.
+**Status:** 0.1.0, not on npm. 90 tests pass: the server flow with a stubbed email adapter and made-up addresses (routing, refusals, rate limits that fail closed, header injection, the honeypot, the optional human check hook) and the React component in jsdom (combobox keys and ARIA attributes, tiles, the form, and the server-rendered no-JS markup). Nothing has run on a real site, no real email has been sent, and the component hasn't been checked with a real screen reader, in a phone browser, or with a contrast tool. The CSS colors are chosen to meet WCAG AA but that hasn't been measured.
 
 ## What it does
 
@@ -72,6 +72,8 @@ Rendered on the server, the topic is a plain select, the tiles are links that re
 | `windowMinutes` | 60 | The window. |
 | `rateLimit` | built in | Your own limiter. Only `true` allows. |
 | `clientAddress` | `x-real-ip`, else last `x-forwarded-for` | Which address counts. |
+| `verifyHuman` | off | A human check such as Turnstile: `({ token, address, req }) => boolean`. Runs before routing and sending. Only `true` passes. |
+| `humanTokenField` | `humanToken` | Form field that carries the check's token. |
 | `maxMessage` | 5000 | Characters. |
 
 ## Guards
@@ -80,7 +82,8 @@ Rendered on the server, the topic is a plain select, the tiles are links that re
 - **Rate limits** count per address and per email. Every request counts against its address, bots included. The built-in limiter counts in memory, per server process, and keeps only hashed keys. On several servers or serverless hosting, pass `rateLimit` backed by something shared, or each process counts alone. Which address counts is only right behind one trusted proxy that sets `x-real-ip` or appends to `x-forwarded-for`. Otherwise pass `clientAddress`.
 - **Honeypot.** A filled hidden field gets the normal success answer and no email.
 - **Header injection.** Line breaks, carriage returns, and the Unicode line separators in the name or email are refused. Quotes and angle brackets are dropped from the name before it goes into a header. The message is body text only.
-- **Limits of the checks.** The email check only catches obvious typos and can't tell whether an address exists. Nothing here stops a determined person with many addresses; for a busy public site add a human check in front.
+- **Human check (optional).** Set `verifyHuman` to verify a Turnstile or similar token on the server. A false, a throw or any answer other than exactly `true` refuses with a plain message that gives no reason. Show the widget with the component's `humanCheck` prop; its token field goes in the post, and the no-JS form post forwards it too. Without the hook nothing changes.
+- **Limits of the checks.** The email check only catches obvious typos and can't tell whether an address exists. Nothing here stops a determined person with many addresses; for a busy public site set `verifyHuman`.
 
 ## Commands
 

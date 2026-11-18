@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 
 import { searchTopics } from './topics.js'
 import type { PublicTopic } from './types.js'
@@ -11,6 +11,8 @@ export type ContactTilesProps = {
   action: string
   honeypotField?: string
   maxMessage?: number
+  /** Your human check's widget (Turnstile or similar), shown above the send button. Its token goes in the form. */
+  humanCheck?: ReactNode
   /** A topic chosen before the page loaded (from `?topic=`). Also what the no-JS tile links produce. */
   initialTopic?: string
   /** From `?sent=1` or `?error=<code>` after a form posted without JavaScript. */
@@ -34,6 +36,7 @@ const defaultText = {
   chooseTopic: 'Please choose what you are contacting us about.',
   failed: 'Something went wrong. Please try again later.',
   busy: 'Too many tries. Please try again in an hour.',
+  human: 'Please confirm you are a person, then try again.',
   invalid: 'Please check your name, email and message and try again.',
   noMatch: 'No matching topics. Choose “Something else” or pick a tile.',
   honeypot: 'Leave this empty',
@@ -91,7 +94,7 @@ export function ContactTiles(props: ContactTilesProps) {
   const [result, setResult] = useState<{ kind: 'sent' | 'error'; text: string } | null>(() => {
     const s = props.status
     if (!s) return null
-    return s === 'sent' || s === '1' ? { kind: 'sent', text: t.sent } : { kind: 'error', text: s === 'busy' ? t.busy : s === 'invalid' || s === 'unknownTopic' ? t.invalid : t.failed }
+    return s === 'sent' || s === '1' ? { kind: 'sent', text: t.sent } : { kind: 'error', text: s === 'busy' ? t.busy : s === 'human' ? t.human : s === 'invalid' || s === 'unknownTopic' ? t.invalid : t.failed }
   })
   const [sending, setSending] = useState(false)
   const [topicError, setTopicError] = useState(false)
@@ -153,7 +156,7 @@ export function ContactTiles(props: ContactTilesProps) {
         setTopic('')
       } else {
         const code = ((await res.json().catch(() => null)) as { error?: { code?: string } } | null)?.error?.code
-        setResult({ kind: 'error', text: code === 'busy' ? t.busy : code === 'invalid' || code === 'unknownTopic' ? t.invalid : t.failed })
+        setResult({ kind: 'error', text: code === 'busy' ? t.busy : code === 'human' ? t.human : code === 'invalid' || code === 'unknownTopic' ? t.invalid : t.failed })
       }
     } catch {
       setResult({ kind: 'error', text: t.failed })
@@ -294,6 +297,7 @@ export function ContactTiles(props: ContactTilesProps) {
           <label htmlFor={`${uid}-hp`}>{t.honeypot}</label>
           <input id={`${uid}-hp`} name={honeypotField} type="text" tabIndex={-1} autoComplete="off" />
         </div>
+        {props.humanCheck}
         <button className="ct-btn" type="submit" disabled={sending}>
           {sending ? t.sending : t.send}
         </button>

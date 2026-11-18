@@ -27,6 +27,8 @@ export type PublicTopic = Pick<Topic, 'id' | 'label' | 'synonyms' | 'hint'>
 
 export type RateKind = 'address' | 'email'
 
+export type VerifyHuman = (args: { token: string | undefined; address: string | null; req: PayloadRequest }) => boolean | Promise<boolean>
+
 export type ContactPluginOptions = {
   topics: Topic[]
   /** Quick tiles, in order. Default: the first six topics. */
@@ -53,6 +55,13 @@ export type ContactPluginOptions = {
   rateLimit?: (kind: RateKind, key: string, req: PayloadRequest) => boolean | Promise<boolean>
   /** The visitor's address for the address limit. Default: `x-real-ip`, else the last `x-forwarded-for` entry. */
   clientAddress?: (req: PayloadRequest) => string | null
+  /**
+   * A human check, such as Turnstile. Off unless set. Runs before routing or sending. Only an answer of exactly
+   * `true` passes; false, a throw or anything else refuses, and the refusal never says why.
+   */
+  verifyHuman?: VerifyHuman
+  /** Form field carrying the check's token. Default `humanToken`. Turnstile's own is `cf-turnstile-response`. */
+  humanTokenField?: string
   /** Largest message, in characters. Default 5000. */
   maxMessage?: number
 }
@@ -69,6 +78,8 @@ export type ResolvedContact = {
   rateLimit: NonNullable<ContactPluginOptions['rateLimit']>
   clientAddress: NonNullable<ContactPluginOptions['clientAddress']>
   maxMessage: number
+  verifyHuman?: VerifyHuman
+  humanTokenField: string
 }
 
-export type ErrorCode = 'busy' | 'invalid' | 'unknownTopic' | 'error' | 'unavailable'
+export type ErrorCode = 'busy' | 'invalid' | 'unknownTopic' | 'human' | 'error' | 'unavailable'

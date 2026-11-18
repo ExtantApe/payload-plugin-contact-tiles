@@ -172,3 +172,22 @@ describe('tiles and form', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Something went wrong')
   })
 })
+
+describe('human check slot', () => {
+  it('renders the site’s widget inside the form, and its field goes in the JSON post', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.fn(async () => new Response('{"ok":true}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<ContactTiles {...props} humanCheck={<input type="hidden" name="humanToken" value="tok-9" />} />)
+    await user.click(await screen.findByRole('button', { name: /Order question/ }))
+    await user.type(screen.getByLabelText('Your name'), 'Made Up')
+    await user.type(screen.getByLabelText('Your email'), 'made.up@example.org')
+    await user.type(screen.getByLabelText('Your message'), 'Where is my order?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string).humanToken).toBe('tok-9')
+  })
+  it('shows a human-check refusal as an alert', () => {
+    expect(renderToString(<ContactTiles {...props} status="human" />)).toContain('confirm you are a person')
+  })
+})

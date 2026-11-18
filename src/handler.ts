@@ -49,6 +49,19 @@ export async function submitContact(o: ResolvedContact, req: PayloadRequest, raw
   // A filled honeypot looks like success, so a bot learns nothing, and sends nothing.
   if (text(raw[o.honeypotField]).trim() !== '') return { ok: true, delivered: false }
 
+  // The human check runs before anything is validated, routed or sent. Anything but exactly true refuses, and the
+  // answer never says why.
+  if (o.verifyHuman) {
+    let human = false
+    try {
+      const token = raw[o.humanTokenField]
+      human = (await o.verifyHuman({ token: typeof token === 'string' && token ? token : undefined, address: o.clientAddress(req), req })) === true
+    } catch (err) {
+      req.payload.logger?.error?.({ err, msg: 'contact-tiles: the human check failed, so refused' })
+    }
+    if (!human) throw new ContactError('human', 'Please confirm you’re a person, then try again.', 400)
+  }
+
   const name = text(raw.name).trim()
   const email = text(raw.email).trim()
   const message = text(raw.message).trim()

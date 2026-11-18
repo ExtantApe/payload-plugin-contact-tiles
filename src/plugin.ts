@@ -52,6 +52,8 @@ export function resolveOptions(options: ContactPluginOptions): ResolvedContact {
     rateLimit: options.rateLimit ?? ((kind, key) => builtin(kind, key)),
     clientAddress: options.clientAddress ?? defaultClientAddress,
     maxMessage: options.maxMessage ?? 5000,
+    verifyHuman: options.verifyHuman,
+    humanTokenField: options.humanTokenField ?? 'humanToken',
   }
 }
 
@@ -90,6 +92,8 @@ export function publicConfig(o: ResolvedContact) {
     tiles: o.tiles.map((t) => ({ topic: t.topic, label: t.label ?? o.topics.get(t.topic)!.label, ...(t.hint ?? o.topics.get(t.topic)!.hint ? { hint: t.hint ?? o.topics.get(t.topic)!.hint } : {}) })),
     path: o.path,
     honeypotField: o.honeypotField,
+    humanCheck: !!o.verifyHuman,
+    humanTokenField: o.humanTokenField,
     maxMessage: o.maxMessage,
   }
 }
