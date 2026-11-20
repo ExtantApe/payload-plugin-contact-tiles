@@ -1,6 +1,6 @@
 import type { PayloadRequest } from 'payload'
 
-import type { ErrorCode, ResolvedContact } from './types.js'
+import type { ErrorCode, ResolvedContact, TrustProxy } from './types.js'
 
 export class ContactError extends Error {
   constructor(
@@ -15,12 +15,17 @@ export class ContactError extends Error {
 const CRLF = /[\r\n\u2028\u2029\0]/
 const EMAIL = /^[^\s@<>(),;:\\"[\]]+@[^\s@<>(),;:\\"[\]]+\.[^\s@<>(),;:\\"[\]]{2,}$/
 
-export const defaultClientAddress = (req: PayloadRequest): string | null => {
-  const h = req.headers
-  const real = h?.get?.('x-real-ip')?.trim()
-  if (real) return real
-  return h?.get?.('x-forwarded-for')?.split(',').at(-1)?.trim() || null
-}
+/** The address from the one header the host says to trust. With `false` there is none, so no header can be faked. */
+export const clientAddressFrom =
+  (trust: TrustProxy) =>
+  (req: PayloadRequest): string | null => {
+    const h = req.headers
+    if (trust === 'x-real-ip') return h?.get?.('x-real-ip')?.trim() || null
+    if (trust === 'x-forwarded-for') return h?.get?.('x-forwarded-for')?.split(',').at(-1)?.trim() || null
+    return null
+  }
+
+const MAX_TOKEN = 2048
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : '')
 
@@ -33,7 +38,7 @@ export type Sent = { ok: true; delivered: boolean }
  * The whole flow, in this order: count the address, honeypot, validate (refusing line breaks), count the email,
  * look the topic up by id, send. A limiter that breaks refuses. Nothing is stored.
  */
-export async function submitContact(o: ResolvedContact, req: PayloadRequest, raw: Record<string, unknown>): Promise<Sent> {
+export async function submitContact(o: ResolvedContact, req: PayloadRequest, input: Record<string, unknown> | (() => Promise<Record<string, unknown>>)): Promise<Sent> {
   const allow = async (kind: 'address' | 'email', key: string) => {
     try {
       return (await o.rateLimit(kind, key, req)) === true
@@ -43,8 +48,10 @@ export async function submitContact(o: ResolvedContact, req: PayloadRequest, raw
   }
   const busy = () => new ContactError('busy', 'Too many tries. Please try again in an hour.', 429)
 
-  // Every request counts against its address, junk and bots included. No address shares one "unknown" count.
+  // Every request counts against its address, junk and bots included, before the body is read. With no address
+  // (nothing trusted, or the header is missing) every visitor shares one "unknown" count: strict, but it fails closed.
   if (!(await allow('address', o.clientAddress(req) ?? 'unknown'))) throw busy()
+  const raw = typeof input === 'function' ? await input() : input
 
   // A filled honeypot looks like success, so a bot learns nothing, and sends nothing.
   if (text(raw[o.honeypotField]).trim() !== '') return { ok: true, delivered: false }
@@ -55,7 +62,20 @@ export async function submitContact(o: ResolvedContact, req: PayloadRequest, raw
     let human = false
     try {
       const token = raw[o.humanTokenField]
-      human = (await o.verifyHuman({ token: typeof token === 'string' && token ? token : undefined, address: o.clientAddress(req), req })) === true
+      if (typeof token === 'string' && token.length > MAX_TOKEN) throw new Error('token too long')
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('the human check timed out')), o.verifyTimeoutMs)
+      })
+      try {
+        human =
+          (await Promise.race([
+            Promise.resolve(o.verifyHuman({ token: typeof token === 'string' && token ? token : undefined, address: o.clientAddress(req), req })),
+            timeout,
+          ])) === true
+      } finally {
+        clearTimeout(timer)
+      }
     } catch (err) {
       req.payload.logger?.error?.({ err, msg: 'contact-tiles: the human check failed, so refused' })
     }

@@ -2,7 +2,7 @@
 
 Contact tiles for Payload: a routed contact page with a search box that autocompletes topics and synonyms, quick tiles, and one short form. The server emails the topic's group address, with the sender as reply-to, and never sends an address to the browser.
 
-**Status:** 0.1.0, not on npm. 90 tests pass: the server flow with a stubbed email adapter and made-up addresses (routing, refusals, rate limits that fail closed, header injection, the honeypot, the optional human check hook) and the React component in jsdom (combobox keys and ARIA attributes, tiles, the form, and the server-rendered no-JS markup). Nothing has run on a real site, no real email has been sent, and the component hasn't been checked with a real screen reader, in a phone browser, or with a contrast tool. The CSS colors are chosen to meet WCAG AA but that hasn't been measured.
+**Status:** 0.1.0, not on npm. 99 tests pass: the server flow with a stubbed email adapter and made-up addresses (routing, refusals, rate limits that fail closed, header injection, the honeypot, the optional human check hook) and the React component in jsdom (combobox keys and ARIA attributes, tiles, the form, and the server-rendered no-JS markup). Nothing has run on a real site, no real email has been sent, and the component hasn't been checked with a real screen reader, in a phone browser, or with a contrast tool. The CSS colors are chosen to meet WCAG AA but that hasn't been measured.
 
 ## What it does
 
@@ -10,7 +10,7 @@ Contact tiles for Payload: a routed contact page with a search box that autocomp
 - **Quick tiles.** Large buttons for the common reasons. You choose which, and in what order.
 - **One short form.** Name, email, message, topic. The server checks it and emails the topic's group address. The reply-to is the sender, so replying goes to them.
 - **Routes live on the server.** The browser sends a topic id and nothing else decides where mail goes. An unknown id is refused. Group addresses are never in the page, the topics endpoint, or an error message.
-- **Nothing stored.** No collection, no copy of the message. The email is the only record, in the group's inbox.
+- **Nothing stored.** No collection, no copy of the message. The email is the only record, in the group's inbox. Your server logs may still show an email adapter's error, which can include the visitor's address.
 
 ## Install
 
@@ -70,8 +70,11 @@ Rendered on the server, the topic is a plain select, the tiles are links that re
 | `honeypotField` | `website` | Hidden field a person never fills. |
 | `limits` | 5 per address, 3 per email | Attempts per window. |
 | `windowMinutes` | 60 | The window. |
-| `rateLimit` | built in | Your own limiter. Only `true` allows. |
-| `clientAddress` | `x-real-ip`, else last `x-forwarded-for` | Which address counts. |
+| `rateLimit` | built in, in memory | Your own limiter (`(kind, key, req) => boolean`, only `true` allows), or `{ store }` with `hit(key, windowMs) => { count }` backed by Redis or your database. A store that throws refuses the send. |
+| `trustProxy` | `false` | `'x-forwarded-for'` (last entry counts) or `'x-real-ip'`, only if your host puts the app behind a proxy that sets that header. With `false` no header is trusted. |
+| `clientAddress` | from `trustProxy` | Your own function for which address counts. Overrides `trustProxy`. |
+| `verifyTimeoutMs` | 10000 | The human check refuses if it takes longer. Tokens over 2048 characters refuse. |
+| `maxKeys` | 50000 | Most keys the built-in limiter keeps. When full and nothing has expired, new keys are refused. |
 | `verifyHuman` | off | A human check such as Turnstile: `({ token, address, req }) => boolean`. Runs before routing and sending. Only `true` passes. |
 | `humanTokenField` | `humanToken` | Form field that carries the check's token. |
 | `maxMessage` | 5000 | Characters. |
@@ -79,7 +82,8 @@ Rendered on the server, the topic is a plain select, the tiles are links that re
 ## Guards
 
 - **Fail closed.** A limiter that throws, or answers anything but `true`, refuses the request. Bad options stop Payload at start-up.
-- **Rate limits** count per address and per email. Every request counts against its address, bots included. The built-in limiter counts in memory, per server process, and keeps only hashed keys. On several servers or serverless hosting, pass `rateLimit` backed by something shared, or each process counts alone. Which address counts is only right behind one trusted proxy that sets `x-real-ip` or appends to `x-forwarded-for`. Otherwise pass `clientAddress`.
+- **Rate limits** count per address and per email. Every request counts against its address, bots included, before the body is read. The built-in limiter counts in memory, **per server process**, so on several servers or serverless hosting each instance counts on its own; pass `rateLimit: { store }` backed by something shared. It keeps only hashed keys and at most `maxKeys` of them. By default no header is trusted for the address, so a visitor can't pick their own, and all visitors share one count. Set `trustProxy` to the header your proxy sets, or pass `clientAddress`. A request with no address shares the same one count, which fails closed.
+- **Body size.** Bodies over 64 KB are refused, and multipart uploads too.
 - **Honeypot.** A filled hidden field gets the normal success answer and no email.
 - **Header injection.** Line breaks, carriage returns, and the Unicode line separators in the name or email are refused. Quotes and angle brackets are dropped from the name before it goes into a header. The message is body text only.
 - **Human check (optional).** Set `verifyHuman` to verify a Turnstile or similar token on the server. A false, a throw or any answer other than exactly `true` refuses with a plain message that gives no reason. Show the widget with the component's `humanCheck` prop; its token field goes in the post, and the no-JS form post forwards it too. Without the hook nothing changes.

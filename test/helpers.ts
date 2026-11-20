@@ -10,7 +10,7 @@ export const topics = [
 ]
 
 export const make = (extra: Partial<ContactPluginOptions> = {}) => {
-  const o = resolveOptions({ topics, ...extra })
+  const o = resolveOptions({ topics, trustProxy: 'x-real-ip', ...extra })
   const sent: Record<string, unknown>[] = []
   const logs: unknown[] = []
   const payload = {
@@ -19,7 +19,7 @@ export const make = (extra: Partial<ContactPluginOptions> = {}) => {
   }
   const [post, get] = contactEndpoints(o)
   const call = async (body: unknown, opts: { ip?: string; form?: boolean; headers?: Record<string, string> } = {}) => {
-    const headers: Record<string, string> = { 'x-real-ip': opts.ip ?? '203.0.113.1', ...opts.headers }
+    const headers: Record<string, string> = { 'x-real-ip': opts.ip ?? '203.0.113.1' }
     let init: RequestInit
     if (opts.form) {
       headers['content-type'] = 'application/x-www-form-urlencoded'
@@ -28,6 +28,7 @@ export const make = (extra: Partial<ContactPluginOptions> = {}) => {
       headers['content-type'] = 'application/json'
       init = { method: 'POST', headers, body: typeof body === 'string' ? body : JSON.stringify(body) }
     }
+    Object.assign(headers, opts.headers)
     const req = Object.assign(new Request('https://site.example.com/api/contact', init), { payload }) as unknown as PayloadRequest
     return post!.handler(req) as Promise<Response>
   }

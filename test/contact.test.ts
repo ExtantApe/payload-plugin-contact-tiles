@@ -167,7 +167,7 @@ describe('rate limits', () => {
     expect((await call(good)).status).toBe(429)
   })
   it('behind a proxy the last x-forwarded-for entry counts, so a faked first entry buys nothing', async () => {
-    const m = make({ limits: { address: 1, email: 99 } })
+    const m = make({ limits: { address: 1, email: 99 }, trustProxy: 'x-forwarded-for' })
     const call = (xff: string) => m.call(good, { ip: '', headers: { 'x-real-ip': '', 'x-forwarded-for': xff } })
     expect((await call('1.1.1.1, 203.0.113.7')).status).toBe(200)
     expect((await call('2.2.2.2, 203.0.113.7')).status).toBe(429)
@@ -345,5 +345,77 @@ describe('optional human check', () => {
     await call(good)
     await call(good)
     expect((await call(good)).status).toBe(429)
+  })
+})
+
+describe('review fixes', () => {
+  it('by default no header is trusted: a spoofed x-real-ip or x-forwarded-for buys no new count', async () => {
+    const m = make({ trustProxy: false, limits: { address: 5, email: 999 } })
+    let ok = 0
+    for (let i = 0; i < 20; i++) {
+      const res = await m.call({ ...good, email: `u${i}@example.org` }, { ip: `9.9.9.${i}`, headers: { 'x-forwarded-for': `8.8.8.${i}` } })
+      if (res.status === 200) ok++
+    }
+    expect(ok).toBe(5)
+  })
+  it('with trustProxy x-forwarded-for, a spoofed x-real-ip is ignored', async () => {
+    const m = make({ trustProxy: 'x-forwarded-for', limits: { address: 2, email: 999 } })
+    let ok = 0
+    for (let i = 0; i < 6; i++) if ((await m.call({ ...good, email: `u${i}@example.org` }, { ip: `9.9.9.${i}`, headers: { 'x-forwarded-for': '203.0.113.7' } })).status === 200) ok++
+    expect(ok).toBe(2)
+  })
+  it('the built-in limiter keeps at most maxKeys keys and refuses new ones when full', async () => {
+    const { memoryLimiter } = await import('../src/limit.js')
+    let t = 0
+    const lim = memoryLimiter({ address: 5, email: 5 }, 1000, () => t, 3)
+    expect(['a', 'b', 'c'].map((k) => lim('address', k))).toEqual([true, true, true])
+    expect(lim('address', 'd')).toBe(false)
+    expect(lim('address', 'a')).toBe(true)
+    t = 2000
+    expect(lim('address', 'd')).toBe(true)
+  })
+  it('refuses a large content-length and multipart before reading, but after counting the address', async () => {
+    const m = make({ limits: { address: 2, email: 99 } })
+    const big = await m.call(good, { headers: { 'content-length': '70000' } })
+    expect(big.status).toBe(413)
+    const multi = await m.call(good, { headers: { 'content-type': 'multipart/form-data; boundary=x' } })
+    expect(multi.status).toBe(415)
+    expect((await m.call(good)).status).toBe(429)
+  })
+  it('cuts off a streamed body over the cap', async () => {
+    const m = make()
+    const res = await m.call('{"name":"' + 'a'.repeat(70_000) + '"}')
+    expect(res.status).toBe(413)
+    expect(m.sent).toHaveLength(0)
+  })
+  it('a human check that never answers refuses after the timeout', async () => {
+    const m = make({ verifyHuman: () => new Promise<boolean>(() => undefined), verifyTimeoutMs: 20 })
+    const res = await m.call({ ...good, humanToken: 't' })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('human')
+    expect(m.sent).toHaveLength(0)
+  })
+  it('a human token over 2048 characters refuses without calling the check', async () => {
+    let called = false
+    const m = make({ verifyHuman: () => ((called = true), true) })
+    expect((await m.call({ ...good, humanToken: 'x'.repeat(2049) })).status).toBe(400)
+    expect(called).toBe(false)
+  })
+  it('rateLimit.store: counts through the store, and refuses past the limit', async () => {
+    const counts = new Map<string, number>()
+    const keys: string[] = []
+    const store = { hit: async (k: string) => (keys.push(k), counts.set(k, (counts.get(k) ?? 0) + 1), { count: counts.get(k)! }) }
+    const m = make({ rateLimit: { store }, limits: { address: 2, email: 99 } })
+    expect((await m.call(good)).status).toBe(200)
+    expect((await m.call(good)).status).toBe(200)
+    expect((await m.call(good)).status).toBe(429)
+    expect(keys.every((k) => /^(address|email):[0-9a-f]{64}$/.test(k))).toBe(true)
+  })
+  it('rateLimit.store: a store that throws, or answers a non-number, refuses the send', async () => {
+    for (const hit of [async () => { throw new Error('redis down') }, () => { throw new Error('x') }, async () => ({ count: NaN }), async () => ({}) as never]) {
+      const m = make({ rateLimit: { store: { hit } } })
+      expect([429, 503]).toContain((await m.call(good)).status)
+      expect(m.sent).toHaveLength(0)
+    }
   })
 })

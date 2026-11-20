@@ -29,6 +29,11 @@ export type RateKind = 'address' | 'email'
 
 export type VerifyHuman = (args: { token: string | undefined; address: string | null; req: PayloadRequest }) => boolean | Promise<boolean>
 
+/** A shared counter, such as Redis or a database table. `hit` adds one for `key` in the window and returns the new count. */
+export type RateStore = { hit: (key: string, windowMs: number) => { count: number } | Promise<{ count: number }> }
+
+export type TrustProxy = false | 'x-forwarded-for' | 'x-real-ip'
+
 export type ContactPluginOptions = {
   topics: Topic[]
   /** Quick tiles, in order. Default: the first six topics. */
@@ -52,9 +57,19 @@ export type ContactPluginOptions = {
    * Your own limiter, for several servers or serverless hosting (the built-in one counts in memory, per process).
    * Return exactly `true` to allow. Anything else, or a throw, refuses.
    */
-  rateLimit?: (kind: RateKind, key: string, req: PayloadRequest) => boolean | Promise<boolean>
-  /** The visitor's address for the address limit. Default: `x-real-ip`, else the last `x-forwarded-for` entry. */
+  rateLimit?: ((kind: RateKind, key: string, req: PayloadRequest) => boolean | Promise<boolean>) | { store: RateStore }
+  /**
+   * Which header carries the visitor's address, only when your host puts the app behind a proxy that sets it:
+   * `'x-forwarded-for'` (the last entry counts) or `'x-real-ip'`. Default `false`: no header is trusted, so a
+   * visitor can't pick their own address, and every request shares one count unless you pass `clientAddress`.
+   */
+  trustProxy?: TrustProxy
+  /** The visitor's address for the address limit. Overrides `trustProxy`. Default: from `trustProxy`, else none. */
   clientAddress?: (req: PayloadRequest) => string | null
+  /** Most the human check may take, in milliseconds. Default 10000. A check that runs out refuses. */
+  verifyTimeoutMs?: number
+  /** Most the built-in limiter keeps, in keys. Default 50000. When full, new keys are refused. */
+  maxKeys?: number
   /**
    * A human check, such as Turnstile. Off unless set. Runs before routing or sending. Only an answer of exactly
    * `true` passes; false, a throw or anything else refuses, and the refusal never says why.
@@ -75,11 +90,12 @@ export type ResolvedContact = {
   honeypotField: string
   limits: Record<RateKind, number>
   windowMs: number
-  rateLimit: NonNullable<ContactPluginOptions['rateLimit']>
+  rateLimit: (kind: RateKind, key: string, req: PayloadRequest) => boolean | Promise<boolean>
   clientAddress: NonNullable<ContactPluginOptions['clientAddress']>
   maxMessage: number
   verifyHuman?: VerifyHuman
   humanTokenField: string
+  verifyTimeoutMs: number
 }
 
 export type ErrorCode = 'busy' | 'invalid' | 'unknownTopic' | 'human' | 'error' | 'unavailable'

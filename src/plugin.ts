@@ -1,19 +1,45 @@
 import type { Config, Endpoint, PayloadRequest, Plugin } from 'payload'
 
-import { ContactError, defaultClientAddress, submitContact } from './handler.js'
-import { memoryLimiter } from './limit.js'
+import { ContactError, clientAddressFrom, submitContact } from './handler.js'
+import { memoryLimiter, storeLimiter } from './limit.js'
 import { toPublic } from './topics.js'
 import type { ContactPluginOptions, ResolvedContact } from './types.js'
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
 
-/** Reads a JSON or form body. Anything unreadable counts as empty, which fails validation. */
+const MAX_BODY = 64 * 1024
+const tooBig = () => new ContactError('invalid', 'That message is too large.', 413)
+
+/**
+ * Reads a JSON or url-encoded body, at most 64 KB. A larger `content-length` is refused before reading, and a
+ * stream is cut off at the cap. Multipart is refused. Anything unreadable counts as empty, which fails validation.
+ */
 const readBody = async (req: PayloadRequest): Promise<{ data: Record<string, unknown>; form: boolean }> => {
   const type = req.headers.get('content-type') ?? ''
-  const form = type.includes('application/x-www-form-urlencoded') || type.includes('multipart/form-data')
+  if (type.includes('multipart/form-data')) throw new ContactError('invalid', 'This form can’t take file uploads.', 415)
+  const form = type.includes('application/x-www-form-urlencoded')
+  const declared = Number(req.headers.get('content-length') ?? 0)
+  if (declared > MAX_BODY) throw tooBig()
+  let body = ''
+  const reader = (req.body as ReadableStream<Uint8Array> | null | undefined)?.getReader?.()
+  if (reader) {
+    const chunks: Uint8Array[] = []
+    let size = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > MAX_BODY) {
+        await reader.cancel().catch(() => undefined)
+        throw tooBig()
+      }
+      chunks.push(value)
+    }
+    body = new TextDecoder().decode(Buffer.concat(chunks))
+  }
   try {
-    if (form) return { data: Object.fromEntries((await req.formData!()).entries()), form }
-    const parsed = (await req.json?.()) as unknown
+    if (form) return { data: Object.fromEntries(new URLSearchParams(body).entries()), form }
+    const parsed = JSON.parse(body) as unknown
     return { data: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}, form }
   } catch {
     return { data: {}, form }
@@ -39,7 +65,8 @@ export function resolveOptions(options: ContactPluginOptions): ResolvedContact {
   if (!path.startsWith('/')) throw new Error('Contact tiles: `path` must start with a slash.')
   const limits = { address: 5, email: 3, ...options.limits }
   const windowMs = (options.windowMinutes ?? 60) * 60_000
-  const builtin = memoryLimiter(limits, windowMs)
+  const rl = options.rateLimit
+  const builtin = rl && typeof rl === 'object' ? storeLimiter(rl.store, limits, windowMs) : memoryLimiter(limits, windowMs, Date.now, options.maxKeys)
   return {
     topics,
     tiles,
@@ -49,8 +76,9 @@ export function resolveOptions(options: ContactPluginOptions): ResolvedContact {
     honeypotField: options.honeypotField ?? 'website',
     limits,
     windowMs,
-    rateLimit: options.rateLimit ?? ((kind, key) => builtin(kind, key)),
-    clientAddress: options.clientAddress ?? defaultClientAddress,
+    rateLimit: typeof rl === 'function' ? rl : (kind, key) => builtin(kind, key),
+    clientAddress: options.clientAddress ?? clientAddressFrom(options.trustProxy ?? false),
+    verifyTimeoutMs: options.verifyTimeoutMs ?? 10_000,
     maxMessage: options.maxMessage ?? 5000,
     verifyHuman: options.verifyHuman,
     humanTokenField: options.humanTokenField ?? 'humanToken',
@@ -62,9 +90,9 @@ export const contactEndpoints = (o: ResolvedContact): Endpoint[] => [
     path: o.path,
     method: 'post',
     handler: async (req) => {
-      const { data, form } = await readBody(req)
+      const form = (req.headers.get('content-type') ?? '').includes('application/x-www-form-urlencoded')
       try {
-        await submitContact(o, req, data)
+        await submitContact(o, req, async () => (await readBody(req)).data)
         return form ? redirect(o, 'sent=1') : json({ ok: true })
       } catch (err) {
         const e =
