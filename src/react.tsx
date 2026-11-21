@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 
+import { resultAnchor } from './anchor.js'
 import { searchTopics } from './topics.js'
 import type { PublicTopic } from './types.js'
 
@@ -19,6 +20,8 @@ export type ContactTilesProps = {
   status?: 'sent' | string
   /** Where the tile links point without JavaScript. Default: the current page. */
   pageHref?: string
+  /** The topic that is always last in search results, so a search is never a dead end. Default `other`. */
+  fallbackTopic?: string
   /** Wording, for translation or a different voice. */
   text?: Partial<typeof defaultText>
 }
@@ -32,6 +35,10 @@ const defaultText = {
   message: 'Your message',
   send: 'Send message',
   sending: 'Sending…',
+  formHeading: '',
+  emailHint: '',
+  errorLead: 'Problem:',
+  sentLead: 'Sent:',
   sent: 'Thanks. Your message is on its way, and we will reply by email.',
   chooseTopic: 'Please choose what you are contacting us about.',
   failed: 'Something went wrong. Please try again later.',
@@ -71,6 +78,8 @@ export const contactTilesCss = `
 .ct-btn[disabled]{opacity:.6;cursor:progress}
 .ct-msg{margin:1rem 0;padding:.9rem 1rem;border-left:5px solid var(--ct-accent);background:var(--ct-tile)}
 .ct-msg[data-kind=error]{border-color:var(--ct-err)}
+.ct-msg:focus{outline:3px solid var(--ct-accent);outline-offset:2px}
+.ct-msg[data-kind=error] .ct-icon{color:var(--ct-err)}
 .ct-trap{position:absolute!important;left:-10000px;width:1px;height:1px;overflow:hidden}
 @media (max-width:30rem){.ct-tiles{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:no-preference){.ct-tile{transition:border-color .15s}}
@@ -94,16 +103,26 @@ export function ContactTiles(props: ContactTilesProps) {
   const [result, setResult] = useState<{ kind: 'sent' | 'error'; text: string } | null>(() => {
     const s = props.status
     if (!s) return null
-    return s === 'sent' || s === '1' ? { kind: 'sent', text: t.sent } : { kind: 'error', text: s === 'busy' ? t.busy : s === 'human' ? t.human : s === 'invalid' || s === 'unknownTopic' ? t.invalid : t.failed }
+    return s === 'sent' || s === '1' ? { kind: 'sent', text: t.sent } : { kind: 'error', text: s === 'busy' ? t.busy : s === 'human' ? t.human : s === 'invalid' ? t.invalid : s === 'unknownTopic' ? t.chooseTopic : t.failed }
   })
   const [sending, setSending] = useState(false)
   const [topicError, setTopicError] = useState(false)
   const input = useRef<HTMLInputElement>(null)
-  const matches = useMemo(() => searchTopics(topics, query), [topics, query])
+  const resultRef = useRef<HTMLParagraphElement>(null)
+  const [focusResult, setFocusResult] = useState(0)
+  useEffect(() => {
+    if (!focusResult) return
+    const el = resultRef.current
+    if (!el) return
+    el.scrollIntoView?.({ block: 'center' })
+    el.focus()
+  }, [focusResult])
+  const matches = useMemo(() => searchTopics(topics, query, 8, props.fallbackTopic ?? 'other'), [topics, query, props.fallbackTopic])
   const chosen = topics.find((x) => x.id === topic)
   const listId = `${uid}-list`
   const optId = (i: number) => `${uid}-opt-${i}`
-  const announce = !open ? '' : matches.length ? t.suggestions(matches.length) : t.noMatch
+  const onlyFallback = !!query.trim() && matches.length === 1 && matches[0]!.id === (props.fallbackTopic ?? 'other')
+  const announce = !open ? '' : matches.length && !onlyFallback ? t.suggestions(matches.length) : t.noMatch
 
   const choose = (id: string) => {
     setTopic(id)
@@ -154,14 +173,16 @@ export function ContactTiles(props: ContactTilesProps) {
         setResult({ kind: 'sent', text: t.sent })
         form.reset()
         setTopic('')
+        setFocusResult((n) => n + 1)
       } else {
         const code = ((await res.json().catch(() => null)) as { error?: { code?: string } } | null)?.error?.code
-        setResult({ kind: 'error', text: code === 'busy' ? t.busy : code === 'human' ? t.human : code === 'invalid' || code === 'unknownTopic' ? t.invalid : t.failed })
+        setResult({ kind: 'error', text: code === 'busy' ? t.busy : code === 'human' ? t.human : code === 'invalid' ? t.invalid : code === 'unknownTopic' ? t.chooseTopic : t.failed })
       }
     } catch {
       setResult({ kind: 'error', text: t.failed })
     }
     setSending(false)
+    setFocusResult((n) => n + 1)
   }
 
   return (
@@ -197,9 +218,12 @@ export function ContactTiles(props: ContactTilesProps) {
       </section>
 
       <form id={`${uid}-form`} method="post" action={action} onSubmit={submit} noValidate={enhanced}>
+        {t.formHeading ? (
+          <h2 style={{ fontSize: '1.15rem', margin: '1.5rem 0 .25rem' }}>{t.formHeading}</h2>
+        ) : null}
         {result ? (
-          <p className="ct-msg" data-kind={result.kind} role={result.kind === 'error' ? 'alert' : 'status'}>
-            {result.text}
+          <p ref={resultRef} id={resultAnchor} tabIndex={-1} className="ct-msg" data-kind={result.kind} role={result.kind === 'error' ? 'alert' : 'status'}>
+            <span aria-hidden="true" className="ct-icon">{result.kind === 'error' ? '⚠' : '✓'}</span> <strong>{result.kind === 'error' ? t.errorLead : t.sentLead}</strong> {result.text}
           </p>
         ) : (
           <p role="status" className="ct-trap" />
@@ -264,7 +288,7 @@ export function ContactTiles(props: ContactTilesProps) {
             </p>
             {topicError ? (
               <p className="ct-hint" role="alert" style={{ color: 'var(--ct-err)' }}>
-                {t.chooseTopic}
+                <span aria-hidden="true">⚠</span> <strong>{t.errorLead}</strong> {t.chooseTopic}
               </p>
             ) : null}
             <div role="status" className="ct-trap">
@@ -290,7 +314,12 @@ export function ContactTiles(props: ContactTilesProps) {
         <label htmlFor={`${uid}-name`}>{t.name}</label>
         <input id={`${uid}-name`} name="name" type="text" autoComplete="name" required maxLength={100} />
         <label htmlFor={`${uid}-email`}>{t.email}</label>
-        <input id={`${uid}-email`} name="email" type="email" autoComplete="email" required maxLength={254} />
+        <input id={`${uid}-email`} name="email" type="email" autoComplete="email" required maxLength={254} aria-describedby={t.emailHint ? `${uid}-email-hint` : undefined} />
+        {t.emailHint ? (
+          <p className="ct-hint" id={`${uid}-email-hint`}>
+            {t.emailHint}
+          </p>
+        ) : null}
         <label htmlFor={`${uid}-message`}>{t.message}</label>
         <textarea id={`${uid}-message`} name="message" required minLength={5} maxLength={maxMessage} />
         <div className="ct-trap" aria-hidden="true">

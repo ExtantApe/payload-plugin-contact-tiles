@@ -1,7 +1,7 @@
 import type { Config } from 'payload'
 import { describe, expect, it } from 'vitest'
 
-import { contactTilesPlugin, memoryLimiter, publicConfig, searchTopics, toPublic } from '../src/index.js'
+import { contactTilesPlugin, memoryLimiter, publicConfig, resultAnchor, searchTopics, toPublic } from '../src/index.js'
 import { good, make, topics } from './helpers.js'
 
 describe('routing and sending', () => {
@@ -203,13 +203,13 @@ describe('no-JS form posts', () => {
     const { call, sent } = make()
     const res = await call(good, { form: true })
     expect(res.status).toBe(303)
-    expect(res.headers.get('location')).toBe('/contact?sent=1')
+    expect(res.headers.get('location')).toBe('/contact?sent=1#contact-result')
     expect(sent).toHaveLength(1)
   })
   it('redirects back with the error code', async () => {
     const { call } = make({ redirectTo: '/help/contact' })
     const res = await call({ ...good, email: 'bad' }, { form: true })
-    expect(res.headers.get('location')).toBe('/help/contact?error=invalid')
+    expect(res.headers.get('location')).toBe('/help/contact?error=invalid#contact-result')
   })
 })
 
@@ -264,14 +264,41 @@ describe('search', () => {
   const pub = topics.map(toPublic)
   it('finds by label, synonym and word, best first', () => {
     expect(searchTopics(pub, 'ord')[0]!.id).toBe('orders')
-    expect(searchTopics(pub, 'refund').map((t) => t.id)).toEqual(['orders'])
+    expect(searchTopics(pub, 'refund').map((t) => t.id)).toEqual(['orders', 'other'])
     expect(searchTopics(pub, 'podcast')[0]!.id).toBe('press')
     expect(searchTopics(pub, 'Jöurnalist')[0]!.id).toBe('press')
   })
-  it('needs every word to match, and gives all topics for an empty query', () => {
-    expect(searchTopics(pub, 'order podcast')).toEqual([])
+  it('gives all topics for an empty query, and only the fallback when nothing matches', () => {
     expect(searchTopics(pub, '  ')).toHaveLength(4)
-    expect(searchTopics(pub, 'zzz')).toEqual([])
+    expect(searchTopics(pub, 'zzz').map((t) => t.id)).toEqual(['other'])
+  })
+  it('ignores filler words', () => {
+    expect(searchTopics(pub, 'where is my kit').map((t) => t.id)).toEqual(['orders', 'other'])
+    expect(searchTopics(pub, 'I want to be featured on a podcast').map((t) => t.id)).toEqual(['press', 'other'])
+    expect(searchTopics(pub, 'I want to sponsor you')[0]!.id).toBe('sponsors')
+  })
+  it('uses the words as given when the query is only filler', () => {
+    expect(searchTopics(pub, 'the').map((t) => t.id)).toEqual(['other'])
+    expect(searchTopics([{ id: 'a', label: 'My account' }, { id: 'other', label: 'Other' }], 'my').map((t) => t.id)).toEqual(['a', 'other'])
+  })
+  it('ranks by how many words match, full matches first, then lists partial matches', () => {
+    const t = [
+      { id: 'a', label: 'Order question', synonyms: ['refund'] },
+      { id: 'b', label: 'Podcast guest', synonyms: ['refund', 'interview'] },
+      { id: 'c', label: 'Podcast' },
+    ]
+    expect(searchTopics(t, 'podcast refund interview').map((x) => x.id)).toEqual(['b', 'c', 'a'])
+    expect(searchTopics(t, 'order podcast').map((x) => x.id)).toEqual(['a', 'b', 'c'])
+  })
+  it('matches a longer typed word to a shorter topic word (featured, interviews)', () => {
+    expect(searchTopics(pub, 'interviews').map((t) => t.id)).toEqual(['press', 'other'])
+  })
+  it('always puts the fallback last, even when it matches and the limit is small', () => {
+    expect(searchTopics(pub, 'something', 8).map((t) => t.id)).toEqual(['other'])
+    expect(searchTopics(pub, 'o', 2).map((t) => t.id)).toHaveLength(2)
+    expect(searchTopics(pub, 'o', 2).at(-1)!.id).toBe('other')
+    expect(searchTopics(pub, 'zzz', 8, 'nothing')).toEqual([])
+    expect(searchTopics(pub, 'sponsor', 8, 'press').map((t) => t.id)).toEqual(['sponsors', 'press'])
   })
   it('puts a label start before a synonym start', () => {
     const t = [
@@ -279,6 +306,15 @@ describe('search', () => {
       { id: 's', label: 'Sponsors' },
     ]
     expect(searchTopics(t, 'spon').map((x) => x.id)).toEqual(['s', 'b'])
+  })
+})
+
+describe('redirect anchor', () => {
+  it('ends every no-JS redirect with the result anchor, and JSON replies have none', async () => {
+    const { call } = make()
+    expect((await call(good, { form: true })).headers.get('location')).toMatch(/#contact-result$/)
+    expect((await call({ ...good, topic: 'nope' }, { form: true })).headers.get('location')).toBe('/contact?error=unknownTopic#contact-result')
+    expect(resultAnchor).toBe('contact-result')
   })
 })
 
@@ -334,10 +370,10 @@ describe('optional human check', () => {
   it('the no-JS form post forwards the token and redirects with the error', async () => {
     const tokens: unknown[] = []
     const ok = make({ verifyHuman: ({ token }) => (tokens.push(token), true) })
-    expect((await ok.call({ ...good, humanToken: 'form-tok' }, { form: true })).headers.get('location')).toBe('/contact?sent=1')
+    expect((await ok.call({ ...good, humanToken: 'form-tok' }, { form: true })).headers.get('location')).toBe('/contact?sent=1#contact-result')
     expect(tokens).toEqual(['form-tok'])
     const no = make({ verifyHuman: () => false })
-    expect((await no.call(good, { form: true })).headers.get('location')).toBe('/contact?error=human')
+    expect((await no.call(good, { form: true })).headers.get('location')).toBe('/contact?error=human#contact-result')
     expect(no.sent).toHaveLength(0)
   })
   it('still counts the address, so a failing check can’t be hammered', async () => {

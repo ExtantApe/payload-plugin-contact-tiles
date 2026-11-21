@@ -63,7 +63,7 @@ describe('combobox', () => {
     const list = screen.getByRole('listbox')
     expect(box.getAttribute('aria-controls')).toBe(list.id)
     const options = within(list).getAllByRole('option')
-    expect(options.map((o) => o.textContent)).toEqual(['Order questionWhere is my kit?'])
+    expect(options.map((o) => o.textContent)).toEqual(['Order questionWhere is my kit?', 'Something else'])
     expect(box.getAttribute('aria-activedescendant')).toBe(options[0]!.id)
     expect(options[0]).toHaveAttribute('aria-selected', 'true')
   })
@@ -101,7 +101,16 @@ describe('combobox', () => {
     expect(screen.getAllByRole('status').some((s) => s.textContent?.includes('No matching topics'))).toBe(true)
     await user.clear(box)
     await user.type(box, 'ord')
-    expect(screen.getAllByRole('status').some((s) => s.textContent?.includes('1 suggestion available'))).toBe(true)
+    expect(screen.getAllByRole('status').some((s) => s.textContent?.includes('2 suggestions available'))).toBe(true)
+  })
+
+  it('ignores filler words, and always lists Something else last', async () => {
+    const { user, box } = await setup()
+    await user.type(box, 'where is my kit')
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Order questionWhere is my kit?', 'Something else'])
+    await user.clear(box)
+    await user.type(box, 'qqq')
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Something else'])
   })
 
   it('a click on an option chooses it', async () => {
@@ -170,6 +179,81 @@ describe('tiles and form', () => {
     await fill(user)
     await user.click(screen.getByRole('button', { name: 'Send message' }))
     expect((await screen.findByRole('alert')).textContent).toContain('Something went wrong')
+  })
+})
+
+describe('after a send, errors and new text', () => {
+  const fill = async (user: UserEvent) => {
+    await user.type(screen.getByLabelText('Your name'), 'Made Up')
+    await user.type(screen.getByLabelText('Your email'), 'made.up@example.org')
+    await user.type(screen.getByLabelText('Your message'), 'Where is my order?')
+  }
+  it('moves focus to the sent message and scrolls to it', async () => {
+    const user = userEvent.setup()
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"ok":true}', { status: 200 })))
+    render(<ContactTiles {...props} />)
+    await user.click(await screen.findByRole('button', { name: /Order question/ }))
+    await fill(user)
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    await waitFor(() => expect(document.getElementById('contact-result')).toHaveFocus())
+    expect(scroll).toHaveBeenCalled()
+  })
+  it('moves focus to an error message too', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":{"code":"busy"}}', { status: 429 })))
+    render(<ContactTiles {...props} />)
+    await user.click(await screen.findByRole('button', { name: /Order question/ }))
+    await fill(user)
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    const alert = await screen.findByRole('alert')
+    await waitFor(() => expect(alert).toHaveFocus())
+    expect(alert.id).toBe('contact-result')
+  })
+  it('renders the anchor target for the no-JS redirect', () => {
+    expect(renderToString(<ContactTiles {...props} status="busy" />)).toContain('id="contact-result"')
+  })
+  it('maps unknownTopic to the choose-a-topic message, from the server and from a no-JS redirect', async () => {
+    const html = renderToString(<ContactTiles {...props} status="unknownTopic" />)
+    expect(html).toContain('Please choose what you are contacting us about.')
+    expect(html).not.toContain('check your name')
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":{"code":"unknownTopic"}}', { status: 400 })))
+    render(<ContactTiles {...props} />)
+    await user.click(await screen.findByRole('button', { name: /Order question/ }))
+    await fill(user)
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Please choose what you are contacting us about.')
+    expect(alert.textContent).not.toContain('check your name')
+  })
+  it('marks errors with an icon hidden from screen readers and a bold lead word', async () => {
+    const html = renderToString(<ContactTiles {...props} status="busy" />)
+    expect(html).toMatch(/<span aria-hidden="true" class="ct-icon">⚠<\/span> <strong>Problem:<\/strong>/)
+    expect(renderToString(<ContactTiles {...props} status="sent" />)).toMatch(/aria-hidden="true" class="ct-icon">✓<\/span> <strong>Sent:<\/strong>/)
+    const custom = renderToString(<ContactTiles {...props} status="busy" text={{ errorLead: 'Oops:' }} />)
+    expect(custom).toContain('<strong>Oops:</strong>')
+  })
+  it('marks the choose-a-topic error the same way', async () => {
+    const user = userEvent.setup()
+    render(<ContactTiles {...props} />)
+    await screen.findByRole('combobox')
+    await fill(user)
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    const alert = screen.getByRole('alert')
+    expect(alert.querySelector('[aria-hidden="true"]')).not.toBeNull()
+    expect(alert.querySelector('strong')?.textContent).toBe('Problem:')
+  })
+  it('shows formHeading as an h2 and emailHint under the email, only when set', () => {
+    const none = renderToString(<ContactTiles {...props} />)
+    expect(none).not.toContain('We reply to this address.')
+    expect((none.match(/<h2/g) ?? []).length).toBe(1)
+    const html = renderToString(<ContactTiles {...props} text={{ formHeading: 'Write to us', emailHint: 'We reply to this address.' }} />)
+    expect(html).toMatch(/<h2[^>]*>Write to us<\/h2>/)
+    expect(html).toContain('We reply to this address.')
+    const id = html.match(/id="([^"]*-email-hint)"/)![1]
+    expect(html).toContain(`aria-describedby="${id}"`)
   })
 })
 
