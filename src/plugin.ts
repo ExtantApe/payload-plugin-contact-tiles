@@ -2,6 +2,7 @@ import type { Config, Endpoint, PayloadRequest, Plugin } from 'payload'
 
 import { ContactError, clientAddressFrom, submitContact } from './handler.js'
 import { memoryLimiter, storeLimiter } from './limit.js'
+import { resultAnchor } from './anchor.js'
 import { toPublic } from './topics.js'
 import type { ContactPluginOptions, ResolvedContact } from './types.js'
 
@@ -111,7 +112,7 @@ export const contactEndpoints = (o: ResolvedContact): Endpoint[] => [
   },
 ]
 
-const redirect = (o: ResolvedContact, query: string) => new Response(null, { status: 303, headers: { Location: `${o.redirectTo}?${query}`, 'Cache-Control': 'no-store' } })
+const redirect = (o: ResolvedContact, query: string) => new Response(null, { status: 303, headers: { Location: `${o.redirectTo}?${query}#${resultAnchor}`, 'Cache-Control': 'no-store' } })
 
 /** Topics and tiles for the page, with no addresses. Use it in a server component, or fetch `GET <path>/topics`. */
 export function publicConfig(o: ResolvedContact) {

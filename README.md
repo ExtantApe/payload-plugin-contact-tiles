@@ -6,7 +6,7 @@ Contact tiles for Payload: a routed contact page with a search box that autocomp
 
 ## What it does
 
-- **One search box.** "What are you contacting us about?" completes from your topics. Each topic has synonyms, so "refund" finds Order question. Arrow keys, Home, End, Enter and Escape work, and a screen reader hears how many suggestions there are.
+- **One search box.** "What are you contacting us about?" completes from your topics. Each topic has synonyms, so "refund" finds Order question. Filler words ("where is my kit", "I want to be featured") are ignored, topics that match more of the meaningful words come first, and the topic with id `other` (change it with `fallbackTopic`) is always last, so a search never ends with nothing to pick. Arrow keys, Home, End, Enter and Escape work, and a screen reader hears how many suggestions there are.
 - **Quick tiles.** Large buttons for the common reasons. You choose which, and in what order.
 - **One short form.** Name, email, message, topic. The server checks it and emails the topic's group address. The reply-to is the sender, so replying goes to them.
 - **Routes live on the server.** The browser sends a topic id and nothing else decides where mail goes. An unknown id is refused. Group addresses are never in the page, the topics endpoint, or an error message.
@@ -56,7 +56,7 @@ export default async function Page({ searchParams }) {
 
 ## Without JavaScript
 
-Rendered on the server, the topic is a plain select, the tiles are links that reload the page with `?topic=`, and the form posts to the endpoint. The endpoint answers a form post with a redirect to `redirectTo` (default `/contact`) plus `?sent=1` or `?error=<code>`. Once the script runs, the select becomes the search box and the tiles become buttons.
+Rendered on the server, the topic is a plain select, the tiles are links that reload the page with `?topic=`, and the form posts to the endpoint. The endpoint answers a form post with a redirect to `redirectTo` (default `/contact`) plus `?sent=1` or `?error=<code>`. The redirect ends with `#contact-result`, the id of the message, so a phone lands on it instead of showing the tiles. With JavaScript, focus moves to the message after a send. Once the script runs, the select becomes the search box and the tiles become buttons.
 
 ## Options
 
@@ -101,3 +101,14 @@ npm run leak-check
 ## License
 
 MIT, copyright EXTANT APE. See [LICENSE](LICENSE).
+
+## Wording
+
+Pass `text` to `ContactTiles` to change any wording. Two are optional and empty by default:
+
+| Key | What it does |
+| --- | --- |
+| `formHeading` | A heading (h2) above the form, such as `Write to us`. |
+| `emailHint` | A line under the email field, such as `We reply to this address.` It is linked to the field for screen readers. |
+
+Messages start with a bold lead word and an icon (`errorLead`, default `Problem:`, and `sentLead`, default `Sent:`), so they don't depend on color alone.
