@@ -2,6 +2,12 @@
 
 Kept by this repo's owning session, per `~/Code/CLAUDE.md`, "Test self-audits". Newest first.
 
+## 2026-11-22: search, focus and the review findings
+
+- Promises: topic search ignores filler words, ranks full matches first and always lists the fallback last; by default no proxy header is trusted, so a spoofed address buys no new count; the built-in limiter has a key cap and refuses when full; large or multipart bodies are refused before reading and streamed ones are cut off; a human check that never answers, or an over-long token, refuses; a custom rate store that throws or answers junk refuses the send; focus moves to the sent message or the error, and errors carry a hidden icon and a bold lead word; no-JS redirects land on the result.
+- Covered: `test/contact.test.ts` (search, proxy, limiter, body cap, human check, store) and `test/react.dom.test.tsx` (focus, markers, headings, the anchor).
+- Gaps skipped (and why): none.
+
 ## 2026-11-17: the optional human check
 
 Suite: 74 tests before, 90 after.
