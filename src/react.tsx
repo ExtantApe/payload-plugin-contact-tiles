@@ -2,7 +2,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 
 import { resultAnchor } from './anchor.js'
-import { searchTopics } from './topics.js'
+import { MAX_QUERY, searchTopics } from './topics.js'
 import type { PublicTopic } from './types.js'
 
 export type ContactTilesProps = {
@@ -246,6 +246,7 @@ export function ContactTiles(props: ContactTilesProps) {
                 id={`${uid}-input`}
                 type="text"
                 role="combobox"
+                maxLength={MAX_QUERY}
                 autoComplete="off"
                 aria-autocomplete="list"
                 aria-expanded={open}

@@ -2,6 +2,14 @@
 
 Kept by this repo's owning session, per `~/Code/CLAUDE.md`, "Test self-audits". Newest first.
 
+## 2026-11-24: smart topic search (K734)
+
+Suite: 124 tests: 98 server, 26 component (jsdom).
+
+- **Promises.** Search ignores spaces, punctuation, case and accents; a single token matches word initials; exact match, then prefix, then word tiers; a word matches only within one word; repeated words count once; at most 200 characters and 12 distinct words; no fuzzy matching; fallback last.
+- **Covered.** Each of those, with a timing check that a 60,000-character query over 200 topics finishes under 200 ms, and a check that "rq" does not find Order question.
+- **Gaps added.** No match across words, repeated words, the two caps, and the timing check (all added in this pass after the security review).
+- **Gaps skipped.** The `maxLength` on the search box (a plain attribute; the cap in `searchTopics` is what's tested). The new matches in a real browser.
 ## 2026-11-22: search, focus and the review findings
 
 - Promises: topic search ignores filler words, ranks full matches first and always lists the fallback last; by default no proxy header is trusted, so a spoofed address buys no new count; the built-in limiter has a key cap and refuses when full; large or multipart bodies are refused before reading and streamed ones are cut off; a human check that never answers, or an over-long token, refuses; a custom rate store that throws or answers junk refuses the send; focus moves to the sent message or the error, and errors carry a hidden icon and a bold lead word; no-JS redirects land on the result.

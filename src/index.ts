@@ -2,6 +2,6 @@ export { contactTilesPlugin, contactEndpoints, publicConfig, resolveOptions } fr
 export type { PublicConfig } from './plugin.js'
 export { submitContact, ContactError } from './handler.js'
 export { resultAnchor } from './anchor.js'
-export { searchTopics, toPublic, normalize } from './topics.js'
+export { MAX_QUERY, MAX_WORDS, searchTopics, toPublic, normalize } from './topics.js'
 export { memoryLimiter, storeLimiter } from './limit.js'
 export type { ContactPluginOptions, ErrorCode, PublicTopic, RateKind, RateStore, Tile, Topic, TrustProxy } from './types.js'
