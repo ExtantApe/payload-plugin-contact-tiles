@@ -29,25 +29,31 @@ const initials = (s: string): string =>
     .map((w) => w[0] ?? '')
     .join('')
 
+/** Longest query searched, and most distinct words counted, so a pasted block can't stall the page. */
+export const MAX_QUERY = 200
+export const MAX_WORDS = 12
+
 /**
  * Topics matching what someone typed, best first. Case, accents, punctuation and spaces do not matter:
  * "presspodcast", "press-podcast" and "Press podcast" all find the same topic, because the squashed forms
- * (spaces removed) are compared as well. A single token of 2 or more letters also matches the word initials of
- * a label or synonym ("ttpg" finds "Tabletop Playground"). Ranking: a query equal to a label or synonym comes
- * first, then one that is the start of a label or synonym. After that, a topic that matches every meaningful
- * word comes before one that matches only some, then more matched words, then the stronger match (label starts
- * with it, a synonym starts with it, a word of either starts with it, then anything that contains it). A topic
- * matching one word is still listed. Filler words ("where", "is", "my", "want") are ignored; if the query is
- * nothing but filler, every word counts. There is no fuzzy matching, so results stay predictable. `fallback`
- * (default `other`) is always last, so a search never ends with no choice; it appears on its own when nothing
- * else matches. An empty query gives every topic in the order given.
+ * (spaces removed) are compared as well. A single token of 2 or more letters also matches the first letters of
+ * the words of a label or synonym ("tp" finds "Tabletop Playground"; add "TTPG" as a synonym to find it by that).
+ * Ranking: a query equal to a label or synonym comes first, then one that is the start of a label or synonym.
+ * After that, a topic that matches every meaningful word comes before one that matches only some, then more
+ * matched words, then the stronger match (label starts with it, a synonym starts with it, a word of either starts
+ * with it, then a word that contains it). A topic matching one word is still listed. Filler words ("where", "is",
+ * "my", "want") are ignored; if the query is nothing but filler, every word counts. Repeated words count once,
+ * and only the first 200 characters and 12 distinct words are searched. There is no fuzzy matching, so results
+ * stay predictable. `fallback` (default `other`) is always last, so a search never ends with no choice; it
+ * appears on its own when nothing else matches. An empty query gives every topic in the order given.
  */
 export function searchTopics<T extends PublicTopic>(topics: T[], query: string, limit = 8, fallback = 'other'): T[] {
-  const q = normalize(query)
+  const q = normalize(query.slice(0, MAX_QUERY))
   if (!q) return topics.slice(0, limit)
-  const all = q.split(' ')
+  const all = [...new Set(q.split(' '))]
   const meaningful = all.filter((w) => !fillerWords.has(w))
-  const words = meaningful.length ? meaningful : all
+  const words = (meaningful.length ? meaningful : all).slice(0, MAX_WORDS)
+  const single = q.indexOf(' ') === -1
   const qs = squash(q)
   const scored: { t: T; matched: number; score: number; rank: number; i: number }[] = []
   let other: T | undefined
@@ -59,7 +65,11 @@ export function searchTopics<T extends PublicTopic>(topics: T[], query: string, 
     const label = normalize(t.label)
     const syns = (t.synonyms ?? []).map(normalize)
     const parts = [label, ...syns]
-    const squashed = parts.map(squash)
+    const labelSq = squash(label)
+    const synsSq = syns.map(squash)
+    const squashed = [labelSq, ...synsSq]
+    const partWords = parts.map((s) => s.split(' '))
+    const inits = parts.filter((s) => s.includes(' ')).map(initials)
     let rank = 0
     if (squashed.some((s) => s === qs)) rank = 2
     else if (squashed.some((s) => s.startsWith(qs))) rank = 1
@@ -67,13 +77,12 @@ export function searchTopics<T extends PublicTopic>(topics: T[], query: string, 
     let score = 0
     for (const w of words) {
       let best = 0
-      const labelSq = squash(label)
       if (label.startsWith(w) || labelSq.startsWith(w)) best = 4
-      else if (syns.some((s) => s.startsWith(w) || squash(s).startsWith(w))) best = 3
-      else if (parts.some((s) => s.split(' ').some((x) => x.startsWith(w)))) best = 2
-      else if (all.length === 1 && w.length >= 2 && parts.some((s) => s.includes(' ') && initials(s) === w)) best = 2
-      else if (parts.some((s) => s.includes(w)) || squashed.some((s) => s.includes(w))) best = 1
-      else if (w.length >= 5 && parts.some((s) => s.split(' ').some((x) => x.length >= 4 && w.startsWith(x)))) best = 1
+      else if (syns.some((s) => s.startsWith(w)) || synsSq.some((s) => s.startsWith(w))) best = 3
+      else if (partWords.some((ws) => ws.some((x) => x.startsWith(w)))) best = 2
+      else if (single && w.length >= 2 && inits.includes(w)) best = 2
+      else if (partWords.some((ws) => ws.some((x) => x.includes(w)))) best = 1
+      else if (w.length >= 5 && partWords.some((ws) => ws.some((x) => x.length >= 4 && w.startsWith(x)))) best = 1
       if (best) {
         matched++
         score += best

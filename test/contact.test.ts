@@ -2,6 +2,7 @@ import type { Config } from 'payload'
 import { describe, expect, it } from 'vitest'
 
 import { contactTilesPlugin, memoryLimiter, publicConfig, resultAnchor, searchTopics, toPublic } from '../src/index.js'
+import { MAX_QUERY, MAX_WORDS } from '../src/topics.js'
 import { good, make, topics } from './helpers.js'
 
 describe('routing and sending', () => {
@@ -504,5 +505,31 @@ describe('smart topic search', () => {
     expect(ids('pre').at(-1)).toBe('other')
     expect(ids('zzzz')).toEqual(['other'])
     expect(searchTopics(list, '')).toHaveLength(5)
+  })
+  it('keeps contains matches inside one word', () => {
+    const l = [{ id: 'order', label: 'Order question' }, { id: 'other', label: 'Other' }]
+    expect(searchTopics(l, 'rq').map((t) => t.id)).toEqual(['other'])
+    expect(searchTopics(l, 'uest').map((t) => t.id)).toEqual(['order', 'other'])
+  })
+  it('counts a repeated word once', () => {
+    const l = [
+      { id: 'a', label: 'Press podcast' },
+      { id: 'b', label: 'Podcast guest' },
+      { id: 'other', label: 'Other' },
+    ]
+    expect(searchTopics(l, 'press press press podcast').map((t) => t.id)).toEqual(['a', 'b', 'other'])
+    expect(searchTopics(l, 'guest guest guest guest press').map((t) => t.id)[0]).toBe('a')
+  })
+  it('searches only the first 200 characters and 12 distinct words', () => {
+    expect(MAX_QUERY).toBe(200)
+    expect(MAX_WORDS).toBe(12)
+    const l = [{ id: 'late', label: 'Zebra' }, { id: 'other', label: 'Other' }]
+    expect(searchTopics(l, 'x'.repeat(200) + ' zebra').map((t) => t.id)).toEqual(['other'])
+    const many = Array.from({ length: 12 }, (_, i) => `w${i}q`).join(' ') + ' zebra'
+    expect(searchTopics(l, many).map((t) => t.id)).toEqual(['other'])
+    const big = 'lorem ipsum '.repeat(5000)
+    const t0 = performance.now()
+    searchTopics(Array.from({ length: 200 }, (_, i) => ({ id: `t${i}`, label: `Topic number ${i}` })), big)
+    expect(performance.now() - t0).toBeLessThan(200)
   })
 })
