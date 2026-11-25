@@ -1,12 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-24)
 
 - Search is smarter about spelling of the query. `searchTopics` ignores spaces and punctuation ("presspodcast", "press-podcast" and "Press podcast" all match), matches the first letters of the words of a label or synonym for a single token of 2 or more letters ("tp" finds Tabletop Playground; add "TTPG" as a synonym to find it by that), and ranks an exact match first, then a prefix of a label or synonym, then the existing tiers. A word only matches inside one word, never across two. Repeated words count once, and only the first 200 characters and 12 distinct words are searched (exported as `MAX_QUERY` and `MAX_WORDS`); the search box takes 200 characters. No fuzzy matching. The fallback stays last. Tested: 124 tests in all (98 server, 26 component; 11 new): squashed input, hyphens, accents, initials, exact before prefix, synonym-only hits, no match across words, repeated words, the length and word caps with a timing check on a 60,000-character query, non-matches and the fallback. Not tested: the component in a browser with the new matches.
 
 - Search ignores filler words and ranks by how many meaningful words match, with full matches first. `searchTopics(topics, query, limit, fallback = 'other')` always puts the fallback topic last, so a search with no match still offers Something else (the component takes `fallbackTopic`). After a send, the message gets focus and scrolls into view, and the no-JS redirect ends with `#contact-result` (exported as `resultAnchor`). `unknownTopic` shows the choose-a-topic message. New optional `text.formHeading` (h2) and `text.emailHint`. Messages carry an aria-hidden icon and a bold lead word (`errorLead`, `sentLead`), for WCAG 1.4.1.
 
 Tested (this change): 113 tests in all (87 server, 26 component; 14 new): filler words, ranking, fallback last, redirect anchor, focus and scroll after a send or an error, unknownTopic wording, icons and lead word, heading and hint. Not tested: a real screen reader, a phone browser, the anchor landing in a real browser, scroll behavior in a real layout (scrollIntoView is stubbed).
+
+## 0.1.0 (2026-11-21)
 
 - First version, 0.1.0. A Payload plugin that adds `POST <path>` (default `/contact`) and `GET <path>/topics`, and a React component at `/react`. Topics, synonyms, routes and tiles come from options. The server routes by topic id only, refuses unknown topics, sends through Payload's email adapter with the sender as reply-to, and stores nothing. Honeypot, per-address and per-email rate limits that fail closed, and refusal of line breaks in the name and email. The component is an ARIA 1.2 combobox with a no-JS fallback (select, tile links, redirecting form post).
 - New: optional `verifyHuman({ token, address, req })` (the sign-up plugin's shape) and `humanTokenField`. Off unless set. It runs after the address count and honeypot and before validation, routing or sending; only exactly `true` passes, and a refusal (400 `human`) never says why. The component takes a `humanCheck` slot, and the no-JS post forwards the token.

@@ -2,7 +2,7 @@
 
 Contact tiles for Payload: a routed contact page with a search box that autocompletes topics and synonyms, quick tiles, and one short form. The server emails the topic's group address, with the sender as reply-to, and never sends an address to the browser.
 
-**Status:** 0.1.0, not on npm. 124 tests pass: the server flow with a stubbed email adapter and made-up addresses (routing, refusals, rate limits that fail closed, header injection, the honeypot, the optional human check hook) and the React component in jsdom (combobox keys and ARIA attributes, tiles, the form, and the server-rendered no-JS markup). Nothing has run on a real site, no real email has been sent, and the component hasn't been checked with a real screen reader, in a phone browser, or with a contrast tool. The CSS colors are chosen to meet WCAG AA but that hasn't been measured.
+**Status:** 0.2.0 (0.1.0 is on npm). 124 tests pass: the server flow with a stubbed email adapter and made-up addresses (routing, refusals, rate limits that fail closed, header injection, the honeypot, the optional human check hook) and the React component in jsdom (combobox keys and ARIA attributes, tiles, the form, and the server-rendered no-JS markup). Nothing has run on a real site, no real email has been sent, and the component hasn't been checked with a real screen reader, in a phone browser, or with a contrast tool. The CSS colors are chosen to meet WCAG AA but that hasn't been measured.
 
 ## What it does
 

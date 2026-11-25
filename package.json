@@ -1,6 +1,6 @@
 {
   "name": "@extantape/payload-plugin-contact-tiles",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Contact tiles for Payload: a routed contact page with a search box that autocompletes topics and synonyms, quick tiles, and one short form. The server emails the topic's group address, with the sender as reply-to, and never sends an address to the browser.",
   "homepage": "https://github.com/ExtantApe/payload-plugin-contact-tiles#readme",
   "bugs": {
